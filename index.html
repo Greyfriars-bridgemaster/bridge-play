@@ -1,0 +1,563 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}html,body{margin:0;font:14px system-ui}</style></head><body><title>Play the Hand</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: toolbar, contract strip, then a bridge table (N top, W / trick / E, S bottom), then status and a trick log. */
+:root {
+  --bg: #F5F1E6;
+  --surface: #FFFFFB;
+  --panel: #FBF8EF;
+  --ink: #26261F;
+  --muted: #646355;
+  --line: #D9D0B4;
+  --green: #184A34;
+  --green-ink: #F7F3E8;
+  --gold: #C9A227;
+  --red: #B3261E;
+  --ok: #1F6B45;
+  --warn-bg: #FFF1C9;
+  --warn-ink: #4F3B00;
+  --card: #FFFFFB;
+  --card-ink: #26261F;
+  --card-red: #C00000;
+  --font-display: 'Fraunces', Cambria, Georgia, serif;
+  --font-body: 'Source Sans 3', Calibri, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Sizes are driven by the window height, so all four hands fit without scrolling and the text stays large. */
+  --chv: clamp(24px, calc((100vh - 298px) / 12), 46px);
+  --lab: 64px; --k: 316px;
+  --cw: min(calc(var(--chv) * 1.2), calc((min(100vw, 1320px) - var(--k)) / 17.3), 64px);
+  --ch: min(var(--chv), calc(var(--cw) / 1.1));
+  --fs: calc(var(--ch) * .62);
+}
+@supports (height: 100dvh) { :root { --chv: clamp(24px, calc((100dvh - 298px) / 12), 46px); } }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101C16; --surface: #17281F; --panel: #1B2F25; --ink: #EDE8D7; --muted: #A9B1A1;
+    --line: #2F4839; --green: #2C7A55; --green-ink: #F4F0E2; --gold: #D8B545; --red: #FF8A80;
+    --ok: #7CD3A1; --warn-bg: #4A3B0F; --warn-ink: #FFE9A8; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101C16; --surface: #17281F; --panel: #1B2F25; --ink: #EDE8D7; --muted: #A9B1A1;
+  --line: #2F4839; --green: #2C7A55; --green-ink: #F4F0E2; --gold: #D8B545; --red: #FF8A80;
+  --ok: #7CD3A1; --warn-bg: #4A3B0F; --warn-ink: #FFE9A8; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font: 16px/1.4 var(--font-body); }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.wrap {
+  max-width: 1320px; margin: 0 auto; padding-block: 8px 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 10px;
+}
+header.bar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
+h1 { font: 700 26px/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em; }
+.title { display: flex; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; min-width: 0; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.btn {
+  min-height: 44px; padding: 0 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 8px; font: 600 15px var(--font-body); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn:hover:not(:disabled) { border-color: var(--gold); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--green); color: var(--green-ink); border-color: var(--green); }
+.btn:focus-visible, .card:focus-visible, select:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+select { min-height: 44px; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: 600 15px var(--font-body); padding: 0 10px; }
+.file-note { font-size: 14px; color: var(--muted); }
+
+.setup { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 6px 12px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; min-height: 56px; }
+.group { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.group > .lab { font: 700 13px var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button {
+  min-width: 40px; min-height: 44px; padding: 0 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 8px; font: 700 18px var(--font-body); cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--green); color: var(--green-ink); border-color: var(--green); }
+.seg button.red { color: var(--red); }
+.seg button.red[aria-pressed="true"] { color: var(--green-ink); }
+.summary { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.contract-pill { font: 700 24px var(--font-display); }
+.meta { font-size: 15px; color: var(--muted); }
+
+.table {
+  display: grid; gap: 10px 12px; justify-content: center; align-items: center;
+  grid-template-columns: 1fr auto 1fr;
+  grid-template-areas: "n n n" "w t e" "s s s";
+}
+.hand {
+  width: calc(var(--cw) * 7 + 55px + var(--lab)); max-width: 100%; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 6px; display: grid; grid-template-columns: var(--lab) minmax(0, 1fr); align-items: start;
+}
+.hand.n { grid-area: n; justify-self: center; }
+.hand.s { grid-area: s; justify-self: center; }
+.hand.w { grid-area: w; justify-self: end; }
+.hand.e { grid-area: e; justify-self: start; }
+.hand.turn { border-color: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 45%, transparent); }
+/* Whose turn: the hand to play gets a soft gold tint and ring; the others fade back a little (still clickable, so the rules messages work). */
+.hand { transition: opacity .2s ease, background-color .2s ease; }
+.hand.turn { background: color-mix(in srgb, var(--surface) 82%, var(--gold)); }
+.table.live .hand:not(.turn) { opacity: .62; }
+.hh { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 4px 0 0 4px; }
+.seat { font: 700 14px var(--font-display); letter-spacing: .1em; text-transform: uppercase; }
+.role { font-size: 12px; font-weight: 700; color: var(--muted); }
+.role.decl { color: var(--green-ink); background: var(--green); border-radius: 99px; padding: 1px 8px; }
+.suits { display: grid; gap: 3px; min-width: 0; }
+.row { display: flex; flex-wrap: nowrap; gap: 3px; height: var(--ch); align-items: center; }
+.sl { flex: none; width: 22px; text-align: center; font: 700 calc(var(--ch) * .72)/1 var(--font-body); color: var(--ink); }
+.sl.red { color: var(--red); }
+.void { color: var(--muted); padding-left: 6px; font-size: var(--fs); }
+.card {
+  flex: 0 1 var(--cw); width: var(--cw); min-width: calc(var(--cw) * .62); height: var(--ch); display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--gold); border-radius: calc(var(--cw) * .14); background: var(--card); color: var(--card-ink);
+  font: 700 var(--fs)/1 var(--font-body); padding: 0; cursor: pointer; position: relative; overflow: hidden;
+  transition: transform .12s ease;
+}
+.card.red { color: var(--card-red); }
+.tc { flex: none; width: calc(var(--cw) * 1.1); height: calc(var(--ch) * 1.3); flex-direction: column; gap: 0; }
+.tc .su { font-size: .8em; }
+button.card:hover { transform: translateY(-3px); }
+.trick {
+  grid-area: t; display: grid; gap: 4px; padding: 6px;
+  grid-template-columns: repeat(3, calc(var(--cw) * 1.1)); grid-template-rows: repeat(3, calc(var(--ch) * 1.3));
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; cursor: pointer;
+}
+.slot { display: flex; align-items: center; justify-content: center; border: 1px dashed var(--line); border-radius: calc(var(--cw) * .14); font-size: 13px; font-weight: 700; color: var(--muted); }
+.slot.pN { grid-column: 2; grid-row: 1; } .slot.pW { grid-column: 1; grid-row: 2; }
+.slot.pE { grid-column: 3; grid-row: 2; } .slot.pS { grid-column: 2; grid-row: 3; }
+.tc { cursor: default; z-index: 3; }
+.tc.win { box-shadow: 0 0 0 3px var(--gold); }
+
+.status {
+  display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px 12px; min-height: 56px;
+  position: sticky; bottom: max(8px, env(safe-area-inset-bottom, 0px)); z-index: 20; box-shadow: 0 4px 18px rgba(0,0,0,.14);
+}
+.status.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--gold); }
+.msg { font-size: 18px; font-weight: 600; min-width: 0; flex: 1 1 260px; }
+.counts { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.count { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--muted); }
+.badge { display: inline-grid; place-items: center; min-width: 40px; height: 40px; border-radius: 50%; background: var(--green); color: var(--green-ink); font: 700 20px var(--font-display); font-variant-numeric: tabular-nums; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.result { background: var(--green); color: var(--green-ink); border-radius: 12px; padding: 12px 16px; font: 600 20px/1.3 var(--font-display); }
+.log { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+.log h2 { font: 700 13px var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.log ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.log li { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; min-height: 40px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.log li:first-child { border-top: 0; }
+.log .n { width: 24px; font-weight: 700; color: var(--muted); }
+.log .p b { font-weight: 700; }
+.log .p b.red, .rd { color: var(--red); }
+.log .w { margin-left: auto; font-weight: 700; }
+.log .w.us { color: var(--ok); }
+.log .rew { min-height: 36px; min-width: 36px; padding: 0 10px; font-size: 14px; }
+.hint { font-size: 14px; color: var(--muted); margin: 6px 0 0; }
+#drop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: color-mix(in srgb, var(--green) 88%, transparent); color: var(--green-ink); font: 700 30px var(--font-display); text-align: center; padding: 20px; }
+
+@media (max-width: 1100px) { .file-note { display: none; } }
+/* Portrait tablet: seat names move above the cards so the hands can be wider. */
+@media (max-width: 900px) {
+  :root { --lab: 0px; --k: 190px; }
+  .hand { grid-template-columns: minmax(0, 1fr); }
+  .hh { flex-direction: row; align-items: center; justify-content: space-between; padding: 0 2px 4px; }
+}
+/* Phone: one column, scrolls normally. */
+@media (max-width: 700px) {
+  :root { --cw: min(46px, calc((100vw - 100px) / 7.2)); }
+  .table { grid-template-columns: 1fr; grid-template-areas: "n" "w" "t" "e" "s"; }
+  .hand, .hand.n, .hand.s, .hand.w, .hand.e { width: 100%; justify-self: stretch; }
+  .trick { justify-self: center; }
+  h1 { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { .card { transition: none; } }
+</style>
+
+<div class="wrap" id="app">
+  <header class="bar">
+    <div class="title"><h1>Play the Hand</h1><span class="file-note" id="fileNote"></span></div>
+    <div class="tools">
+      <label class="btn primary" for="file" id="fileLabel" tabindex="0">Load a PBN file</label>
+      <input type="file" id="file" accept=".pbn,.txt,text/plain" hidden>
+      <button class="btn" id="sample" type="button">This week’s boards</button>
+      <button class="btn" id="prevB" type="button" aria-label="Previous board">&#8249;</button>
+      <select id="boardSel" aria-label="Board"></select>
+      <button class="btn" id="nextB" type="button" aria-label="Next board">&#8250;</button>
+    </div>
+  </header>
+
+  <section class="setup" id="setup" aria-label="Contract"></section>
+
+  <main class="table" id="table" aria-label="Bridge table"></main>
+
+  <section class="result" id="result" hidden></section>
+
+  <section class="status" id="status" aria-live="polite">
+    <div class="msg" id="msg"></div>
+    <div class="counts" id="counts"></div>
+    <div class="actions">
+      <button class="btn" id="undoCard" type="button">Undo card</button>
+      <button class="btn" id="undoTrick" type="button">Undo trick</button>
+      <button class="btn" id="restart" type="button">Restart board</button>
+    </div>
+  </section>
+
+  <section class="log" id="log">
+    <h2>Tricks played</h2>
+    <ol id="logList"></ol>
+    <p class="hint" id="logHint">Each completed trick appears here. Press &#8630; on a trick to go back to that point.</p>
+  </section>
+</div>
+<div id="drop" hidden>Drop a .pbn file to load its boards</div>
+
+<script>
+(function () {
+  'use strict';
+  var SEATS = ['N', 'E', 'S', 'W'];
+  var NAME = { N: 'North', E: 'East', S: 'South', W: 'West' };
+  var SUITS = ['S', 'H', 'D', 'C'];
+  var SYM = { S: '♠︎', H: '♥︎', D: '♦︎', C: '♣︎' };
+  var PL = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' };
+  var RANKS = '23456789TJQKA';
+  var STRAINS = ['C', 'D', 'H', 'S', 'NT'];
+  var $ = function (id) { return document.getElementById(id); };
+  var rv = function (r) { return RANKS.indexOf(r); };
+  var isRed = function (s) { return s === 'H' || s === 'D'; };
+  var nextSeat = function (s) { return SEATS[(SEATS.indexOf(s) + 1) % 4]; };
+  var partner = function (s) { return SEATS[(SEATS.indexOf(s) + 2) % 4]; };
+  var lho = nextSeat;
+  var rankLabel = function (r) { return r === 'T' ? '10' : r; };
+  var cap = function (s) { return s.charAt(0).toUpperCase() + s.slice(1); };
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* Built-in copy of this week's boards, used if boards.pbn cannot be found next to this page. */
+  var DEFAULT_PBN = "% PBN 2.1\n% BridgeSim Generated - exported 2026.11.01\n\n[Event \"BridgeSim Generated\"]\n[Site \"\"]\n[Date \"2026.11.01\"]\n[Board \"1\"]\n[West \"\"]\n[North \"\"]\n[East \"\"]\n[South \"\"]\n[Dealer \"N\"]\n[Vulnerable \"None\"]\n[Deal \"N:KJ8.AKT985.J.832 3.Q3.AKT862.KQJ4 AQT9764.7..AT976 52.J642.Q97543.5\"]\n[Scoring \"\"]\n[Declarer \"\"]\n[Contract \"\"]\n[Result \"\"]\n\n[Event \"BridgeSim Generated\"]\n[Site \"\"]\n[Date \"2026.11.01\"]\n[Board \"2\"]\n[West \"\"]\n[North \"\"]\n[East \"\"]\n[South \"\"]\n[Dealer \"E\"]\n[Vulnerable \"NS\"]\n[Deal \"N:J4.732.KQJ865.63 A.KJ9854.3.KJT94 K73..AT9742.A872 QT98652.AQT6..Q5\"]\n[Scoring \"\"]\n[Declarer \"\"]\n[Contract \"\"]\n[Result \"\"]\n; NOTE: swapped (was Board 6)\n\n[Event \"BridgeSim Generated\"]\n[Site \"\"]\n[Date \"2026.11.01\"]\n[Board \"3\"]\n[West \"\"]\n[North \"\"]\n[East \"\"]\n[South \"\"]\n[Dealer \"S\"]\n[Vulnerable \"EW\"]\n[Deal \"N:J98632.JT9.QT85. 4.A862.J43.98542 AQT75.KQ54.AK.63 K.73.9762.AKQJT7\"]\n[Scoring \"\"]\n[Declarer \"\"]\n[Contract \"\"]\n[Result \"\"]\n; NOTE: swapped (was Board 7)\n\n[Event \"BridgeSim Generated\"]\n[Site \"\"]\n[Date \"2026.11.01\"]\n[Board \"4\"]\n[West \"\"]\n[North \"\"]\n[East \"\"]\n[South \"\"]\n[Dealer \"W\"]\n[Vulnerable \"All\"]\n[Deal \"N:K8.T.K9875.KQ543 J532.AK9654.J4.T A.82.QT63.J98762 QT9764.QJ73.A2.A\"]\n[Scoring \"\"]\n[Declarer \"\"]\n[Contract \"\"]\n[Result \"\"]\n\n[Event \"BridgeSim Generated\"]\n[Site \"\"]\n[Date \"2026.11.01\"]\n[Board \"5\"]\n[West \"\"]\n[North \"\"]\n[East \"\"]\n[South \"\"]\n[Dealer \"N\"]\n[Vulnerable \"NS\"]\n[Deal \"N:AQ9.AT874.JT54.J 753..AQ32.AQ8643 KJ642.KQJ95.76.7 T8.632.K98.KT952\"]\n[Scoring \"\"]\n[Declarer \"\"]\n[Contract \"\"]\n[Result \"\"]\n\n[Event \"BridgeSim Generated\"]\n[Site \"\"]\n[Date \"2026.11.01\"]\n[Board \"6\"]\n[West \"\"]\n[North \"\"]\n[East \"\"]\n[South \"\"]\n[Dealer \"E\"]\n[Vulnerable \"EW\"]\n[Deal \"N:86..98643.KQT432 954.AQT64.AQJ2.8 QT.K83.KT7.AJ976 AKJ732.J9752.5.5\"]\n[Scoring \"\"]\n[Declarer \"\"]\n[Contract \"\"]\n[Result \"\"]\n; NOTE: swapped (was Board 2)\n\n[Event \"BridgeSim Generated\"]\n[Site \"\"]\n[Date \"2026.11.01\"]\n[Board \"7\"]\n[West \"\"]\n[North \"\"]\n[East \"\"]\n[South \"\"]\n[Dealer \"S\"]\n[Vulnerable \"All\"]\n[Deal \"N:J9753.AQT2.5.QJ9 42.J98.KQ87.5432 AKQT86.53.6.KT86 .K764.AJT9432.A7\"]\n[Scoring \"\"]\n[Declarer \"\"]\n[Contract \"\"]\n[Result \"\"]\n; NOTE: swapped (was Board 3)\n\n[Event \"BridgeSim Generated\"]\n[Site \"\"]\n[Date \"2026.11.01\"]\n[Board \"8\"]\n[West \"\"]\n[North \"\"]\n[East \"\"]\n[South \"\"]\n[Dealer \"W\"]\n[Vulnerable \"None\"]\n[Deal \"N:T.AKJ643.A6.T654 AJ975.952.K843.8 43.T87.5.KQJ9732 KQ862.Q.QJT972.A\"]\n[Scoring \"\"]\n[Declarer \"\"]\n[Contract \"\"]\n[Result \"\"]\n\n[Event \"BridgeSim Generated\"]\n[Site \"\"]\n[Date \"2026.11.01\"]\n[Board \"9\"]\n[West \"\"]\n[North \"\"]\n[East \"\"]\n[South \"\"]\n[Dealer \"N\"]\n[Vulnerable \"EW\"]\n[Deal \"N:AKT52.AK63.A64.8 J9.J7.Q72.AQT752 Q8764.Q9854.95.6 3.T2.KJT83.KJ943\"]\n[Scoring \"\"]\n[Declarer \"\"]\n[Contract \"\"]\n[Result \"\"]\n";
+  var WEEK_LABEL = 'This week’s boards';
+
+  /* ---------------------------------------------------------- PBN parsing */
+  function parseDeal(v) {
+    var m = /^\s*([NESW])\s*:\s*(.+?)\s*$/i.exec(v);
+    if (!m) throw new Error('Deal tag not understood');
+    var start = SEATS.indexOf(m[1].toUpperCase());
+    var hands = m[2].split(/\s+/);
+    if (hands.length !== 4) throw new Error('Deal needs four hands');
+    var deal = {}, seen = {};
+    hands.forEach(function (h, i) {
+      var suits = h.split('.');
+      if (suits.length !== 4) throw new Error('A hand needs four suits');
+      var cards = [];
+      suits.forEach(function (str, si) {
+        var clean = str.replace(/-/g, '').replace(/10/g, 'T').toUpperCase();
+        var ranks = clean.split('').sort(function (a, b) { return rv(b) - rv(a); });
+        ranks.forEach(function (r) {
+          if (RANKS.indexOf(r) < 0) throw new Error('Unknown card ' + r);
+          var c = SUITS[si] + r;
+          if (seen[c]) throw new Error('Duplicate card ' + c);
+          seen[c] = 1; cards.push(c);
+        });
+      });
+      if (cards.length !== 13) throw new Error('A hand does not have 13 cards');
+      deal[SEATS[(start + i) % 4]] = cards;
+    });
+    return deal;
+  }
+  function parseContract(c, d) {
+    var m = /^\s*([1-7])\s*(NT|N|S|H|D|C)\s*X{0,2}\s*$/i.exec(c || '');
+    var dec = (d || '').toUpperCase();
+    if (!m || SEATS.indexOf(dec) < 0) return null;
+    var st = m[2].toUpperCase(); if (st === 'N') st = 'NT';
+    return { level: +m[1], strain: st, declarer: dec };
+  }
+  function parsePBN(text) {
+    var HEAD = { Event: 1, Site: 1, Date: 1, Board: 1, West: 1, North: 1, East: 1, South: 1, Dealer: 1, Vulnerable: 1, Deal: 1 };
+    var raws = [], cur = null;
+    text.split(/\r?\n/).forEach(function (line) {
+      var m = /^\s*\[(\w+)\s+"(.*)"\s*\]/.exec(line);
+      if (!m) return;
+      if (!cur || (cur.Deal !== undefined && HEAD[m[1]])) { if (cur) raws.push(cur); cur = {}; }
+      cur[m[1]] = m[2];
+    });
+    if (cur) raws.push(cur);
+    var boards = [], skipped = 0;
+    raws.forEach(function (r, i) {
+      if (r.Deal === undefined) return;
+      try {
+        boards.push({
+          num: r.Board || String(boards.length + 1), dealer: (r.Dealer || '').toUpperCase(), vul: r.Vulnerable || '',
+          deal: parseDeal(r.Deal), contract: parseContract(r.Contract, r.Declarer)
+        });
+      } catch (e) { skipped++; }
+    });
+    return { boards: boards, skipped: skipped };
+  }
+
+  /* ---------------------------------------------------------- state */
+  var S = {
+    boards: [], bi: -1, deal: null, contract: { level: null, strain: null, declarer: null },
+    started: false, plays: [], showTrick: false, timer: null, msg: '', kind: '', msgTok: 0, confirmChange: false, label: ''
+  };
+
+  function trumpSuit() { return SUITS.indexOf(S.contract.strain) >= 0 ? S.contract.strain : null; }
+  function beats(a, b, trump) {
+    var sa = a.card.charAt(0), sb = b.card.charAt(0);
+    if (sa === sb) return rv(a.card.charAt(1)) > rv(b.card.charAt(1));
+    return sa === trump;
+  }
+  function winnerOf(t) {
+    var trump = trumpSuit(), best = t[0];
+    for (var i = 1; i < t.length; i++) if (beats(t[i], best, trump)) best = t[i];
+    return best.seat;
+  }
+  function derive() {
+    var used = {}; S.plays.forEach(function (p) { used[p.card] = 1; });
+    var rem = {}; SEATS.forEach(function (s) { rem[s] = S.deal[s].filter(function (c) { return !used[c]; }); });
+    var tricks = [];
+    for (var i = 0; i + 4 <= S.plays.length; i += 4) { var t = S.plays.slice(i, i + 4); tricks.push({ plays: t, winner: winnerOf(t) }); }
+    var cur = S.plays.slice(Math.floor(S.plays.length / 4) * 4);
+    var turn = null;
+    if (S.started) {
+      if (S.plays.length === 0) turn = lho(S.contract.declarer);
+      else if (cur.length === 0) turn = tricks[tricks.length - 1].winner;
+      else turn = nextSeat(cur[cur.length - 1].seat);
+    }
+    var ns = tricks.filter(function (t) { return t.winner === 'N' || t.winner === 'S'; }).length;
+    return { rem: rem, tricks: tricks, cur: cur, turn: turn, ns: ns, ew: tricks.length - ns };
+  }
+  function contractText() {
+    var c = S.contract;
+    return c.level + (c.strain === 'NT' ? 'NT' : SYM[c.strain]) + ' by ' + NAME[c.declarer];
+  }
+
+  /* ---------------------------------------------------------- messages */
+  function say(msg, kind) {
+    S.msg = msg; S.kind = kind || ''; var tok = ++S.msgTok;
+    renderStatus();
+    if (kind === 'warn') setTimeout(function () { if (S.msgTok === tok) { S.msg = ''; S.kind = ''; renderStatus(); } }, 4500);
+  }
+  function prompt(d) {
+    if (!S.deal) return 'Load a PBN file to begin.';
+    if (!S.started) return 'Choose the contract and declarer, then press Start play.';
+    if (S.plays.length === 52) return 'All 13 tricks played.';
+    if (S.showTrick && d.cur.length === 0) return NAME[d.turn] + ' wins the trick. Click any card to carry on.';
+    if (S.plays.length === 0) return 'Opening lead: ' + NAME[d.turn] + ' to lead. Click a card in ' + NAME[d.turn] + '’s hand.';
+    var led = d.cur.length ? ' ' + cap(PL[d.cur[0].card.charAt(0)]) + ' led.' : '';
+    return NAME[d.turn] + ' to play.' + led;
+  }
+
+  /* ---------------------------------------------------------- rendering */
+  function cardHTML(c, seat, tag, extra) {
+    var s = c.charAt(0), r = c.charAt(1);
+    var attrs = ' class="card' + (isRed(s) ? ' red' : '') + (extra || '') + '" data-card="' + c + '"' + (seat ? ' data-seat="' + seat + '"' : '');
+    var label = rankLabel(r) + ' of ' + PL[s];
+    /* In a hand the suit is shown once at the start of the row, so the card shows the rank only. */
+    if (tag === 'button') return '<button type="button"' + attrs + ' aria-label="' + label + '"><span class="r">' + rankLabel(r) + '</span></button>';
+    return '<div' + attrs + ' aria-label="' + label + '"><span class="r">' + rankLabel(r) + '</span><span class="su">' + SYM[s] + '</span></div>';
+  }
+  function renderBoardBar() {
+    var sel = $('boardSel');
+    sel.innerHTML = S.boards.map(function (b, i) {
+      var parts = ['Board ' + b.num];
+      if (b.dealer) parts.push('Dealer ' + b.dealer);
+      if (b.vul) parts.push('Vul ' + b.vul);
+      return '<option value="' + i + '"' + (i === S.bi ? ' selected' : '') + '>' + parts.join(' · ') + '</option>';
+    }).join('');
+    sel.disabled = S.boards.length === 0;
+    $('prevB').disabled = S.bi <= 0; $('nextB').disabled = S.bi < 0 || S.bi >= S.boards.length - 1;
+    $('fileNote').textContent = S.label ? S.label + ' – ' + S.boards.length + ' board' + (S.boards.length === 1 ? '' : 's') : '';
+  }
+  function seg(id, items, current, labelFn, redFn) {
+    return '<div class="seg" id="' + id + '">' + items.map(function (v) {
+      return '<button type="button" data-v="' + v + '" aria-pressed="' + (current === v) + '"' + (redFn && redFn(v) ? ' class="red"' : '') + '>' + labelFn(v) + '</button>';
+    }).join('') + '</div>';
+  }
+  function renderSetup() {
+    var el = $('setup'), c = S.contract;
+    if (!S.deal) { el.innerHTML = '<span class="meta">No board loaded.</span>'; return; }
+    if (S.started) {
+      var b = S.boards[S.bi];
+      el.innerHTML = '<div class="summary"><span class="contract-pill">' + contractText() + '</span>' +
+        '<span class="meta">Trumps: ' + (trumpSuit() ? PL[trumpSuit()] : 'none') + ' · Declarer’s side needs ' + (c.level + 6) + ' tricks' +
+        (b.dealer ? ' · Dealer ' + NAME[b.dealer] : '') + (b.vul ? ' · Vul ' + b.vul : '') + '</span>' +
+        '<button class="btn" id="change" type="button">' + (S.confirmChange ? 'Press again to discard this play' : 'Change contract') + '</button></div>';
+      return;
+    }
+    var ready = c.level && c.strain && c.declarer;
+    el.innerHTML =
+      '<div class="group"><span class="lab">Level</span>' + seg('segLevel', [1, 2, 3, 4, 5, 6, 7], c.level, String) + '</div>' +
+      '<div class="group"><span class="lab">Suit</span>' + seg('segStrain', STRAINS, c.strain, function (v) { return v === 'NT' ? 'NT' : SYM[v]; }, function (v) { return v === 'H' || v === 'D'; }) + '</div>' +
+      '<div class="group"><span class="lab">Declarer</span>' + seg('segDecl', SEATS, c.declarer, function (v) { return v; }) + '</div>' +
+      '<button class="btn primary" id="start" type="button"' + (ready ? '' : ' disabled') + '>Start play</button>';
+  }
+  function renderTable() {
+    var d = S.deal ? derive() : null, t = $('table');
+    if (!d) { t.innerHTML = ''; return; }
+    var dec = S.started ? S.contract.declarer : null;
+    var html = SEATS.map(function (seat) {
+      var rows = SUITS.map(function (su) {
+        var cs = d.rem[seat].filter(function (c) { return c.charAt(0) === su; });
+        return '<div class="row"><span class="sl' + (isRed(su) ? ' red' : '') + '" aria-hidden="true">' + SYM[su] + '</span>' +
+          (cs.length ? cs.map(function (c) { return cardHTML(c, seat, 'button'); }).join('') : '<span class="void">–</span>') + '</div>';
+      }).join('');
+      var role = '';
+      if (dec === seat) role = '<span class="role decl">Declarer</span>';
+      else if (dec && partner(dec) === seat) role = '<span class="role">Dummy</span>';
+      var turn = S.started && d.turn === seat && S.plays.length < 52 && !(S.showTrick && d.cur.length === 0 && false);
+      return '<section class="hand ' + seat.toLowerCase() + (turn ? ' turn' : '') + '" aria-label="' + NAME[seat] + ' hand"><div class="hh"><span class="seat">' + NAME[seat] + '</span>' + role + '</div><div class="suits">' + rows + '</div></section>';
+    }).join('');
+    var shown = d.cur.slice(), winSeat = null;
+    if (S.showTrick && d.cur.length === 0 && d.tricks.length) { var lt = d.tricks[d.tricks.length - 1]; shown = lt.plays; winSeat = lt.winner; }
+    var slots = SEATS.map(function (seat) {
+      var p = shown.filter(function (x) { return x.seat === seat; })[0];
+      return p ? '<div class="slot p' + seat + '" style="border-style:solid;border-color:transparent">' + cardHTML(p.card, null, 'div', ' tc' + (winSeat === seat ? ' win' : '')) + '</div>'
+               : '<div class="slot p' + seat + '">' + seat + '</div>';
+    }).join('');
+    t.className = 'table' + (S.started && S.plays.length < 52 ? ' live' : '');
+    t.innerHTML = html + '<div class="trick" id="trick" title="Click to clear the trick">' + slots + '</div>';
+  }
+  function renderStatus() {
+    var d = S.deal ? derive() : { tricks: [], cur: [], ns: 0, ew: 0, turn: null };
+    var st = $('status');
+    st.className = 'status' + (S.kind === 'warn' ? ' warn' : '');
+    $('msg').textContent = S.msg || prompt(d);
+    var c = S.contract, ds = 0;
+    if (S.started) ds = d.tricks.filter(function (t) { return t.winner === c.declarer || t.winner === partner(c.declarer); }).length;
+    $('counts').innerHTML = '<span class="count">N/S <span class="badge">' + d.ns + '</span></span><span class="count">E/W <span class="badge">' + d.ew + '</span></span>' +
+      (S.started ? '<span class="count">Declarer’s side <span class="badge" title="Tricks won by declarer’s side">' + ds + '</span> of ' + (c.level + 6) + '</span>' : '');
+    $('undoCard').disabled = !S.started || S.plays.length === 0;
+    $('undoTrick').disabled = !S.started || S.plays.length === 0;
+    $('restart').disabled = !S.started || S.plays.length === 0;
+    var res = $('result');
+    if (S.started && S.plays.length === 52) {
+      var need = c.level + 6, over = ds - need;
+      res.hidden = false;
+      res.innerHTML = contractText() + ': ' + (over >= 0 ? 'made' + (over ? ' with ' + over + ' overtrick' + (over > 1 ? 's' : '') : ' exactly') : 'down ' + (-over)) +
+        '. Declarer’s side took ' + ds + ' trick' + (ds === 1 ? '' : 's') + ' and needed ' + need + '.';
+    } else res.hidden = true;
+  }
+  function renderLog() {
+    var d = S.deal ? derive() : { tricks: [] }, ol = $('logList');
+    ol.innerHTML = d.tricks.map(function (t, i) {
+      var cards = t.plays.map(function (p) {
+        var s = p.card.charAt(0);
+        return '<span class="p">' + p.seat + ' <b class="' + (isRed(s) ? 'red' : '') + '">' + SYM[s] + rankLabel(p.card.charAt(1)) + '</b></span>';
+      }).join('');
+      var us = S.started && (t.winner === S.contract.declarer || t.winner === partner(S.contract.declarer));
+      return '<li><span class="n">' + (i + 1) + '</span>' + cards + '<span class="w' + (us ? ' us' : '') + '">' + t.winner + ' wins</span>' +
+        '<button type="button" class="btn rew" data-k="' + i + '" title="Go back to the start of trick ' + (i + 1) + '" aria-label="Go back to the start of trick ' + (i + 1) + '">↶</button></li>';
+    }).join('');
+    $('log').hidden = d.tricks.length === 0;
+  }
+  function render() { renderBoardBar(); renderSetup(); renderTable(); renderStatus(); renderLog(); }
+
+  /* ---------------------------------------------------------- actions */
+  function clearTimer() { if (S.timer) { clearTimeout(S.timer); S.timer = null; } }
+  function selectBoard(i) {
+    clearTimer();
+    S.bi = i; var b = S.boards[i]; S.deal = b.deal;
+    S.contract = b.contract ? { level: b.contract.level, strain: b.contract.strain, declarer: b.contract.declarer } : { level: null, strain: null, declarer: null };
+    S.started = false; S.plays = []; S.showTrick = false; S.confirmChange = false; S.msg = ''; S.kind = '';
+    render();
+  }
+  function loadText(text, label) {
+    var r = parsePBN(text);
+    if (!r.boards.length) { say('No boards were found in that file. A PBN file needs a [Deal "N:..."] line for each board.', 'warn'); return; }
+    S.boards = r.boards; S.label = label; selectBoard(0);
+    if (r.skipped) say(r.skipped + ' board' + (r.skipped === 1 ? ' was' : 's were') + ' skipped because the deal could not be read.', 'warn');
+  }
+  function tryPlay(seat, card, el) {
+    var d = derive();
+    function shake() { if (el && el.animate && !reduce) el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }], { duration: 260 }); }
+    if (!S.started) { say('Choose the contract and declarer first, then press Start play.', 'warn'); shake(); return; }
+    if (S.plays.length === 52) return;
+    if (seat !== d.turn) {
+      say(S.plays.length === 0 ? 'The opening lead comes from ' + NAME[d.turn] + ', on declarer’s left.' : 'It’s ' + NAME[d.turn] + '’s turn to play.', 'warn');
+      shake(); return;
+    }
+    if (d.cur.length) {
+      var led = d.cur[0].card.charAt(0);
+      if (card.charAt(0) !== led && d.rem[seat].some(function (c) { return c.charAt(0) === led; })) {
+        say('Not quite. ' + cap(PL[led]) + ' were led and ' + NAME[seat] + ' still has ' + PL[led] + ', so one of those needs to be played.', 'warn');
+        shake(); return;
+      }
+    }
+    var from = el.getBoundingClientRect();
+    clearTimer(); S.showTrick = false; S.msg = ''; S.kind = ''; S.msgTok++;
+    S.plays.push({ seat: seat, card: card });
+    if (S.plays.length % 4 === 0) {
+      S.showTrick = true;
+      if (S.plays.length < 52) {
+        var n = S.plays.length;
+        S.timer = setTimeout(function () { if (S.showTrick && S.plays.length === n) { S.showTrick = false; render(); } }, 3000);
+      }
+    }
+    render();
+    var ne = document.querySelector('#trick [data-card="' + card + '"]');
+    if (ne && ne.animate && !reduce) {
+      var to = ne.getBoundingClientRect();
+      ne.animate([{ transform: 'translate(' + (from.left - to.left) + 'px,' + (from.top - to.top) + 'px)' }, { transform: 'translate(0,0)' }], { duration: 420, easing: 'cubic-bezier(.2,.7,.2,1)' });
+    }
+  }
+  function truncate(n) { clearTimer(); S.plays = S.plays.slice(0, Math.max(0, n)); S.showTrick = false; S.msg = ''; S.kind = ''; S.msgTok++; render(); }
+
+  /* ---------------------------------------------------------- events */
+  $('table').addEventListener('click', function (e) {
+    var b = e.target.closest('button.card');
+    if (b) { tryPlay(b.getAttribute('data-seat'), b.getAttribute('data-card'), b); return; }
+    if (e.target.closest('#trick') && S.showTrick && S.plays.length < 52) { clearTimer(); S.showTrick = false; render(); }
+  });
+  $('setup').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var grp = b.parentNode.id, v = b.getAttribute('data-v');
+    if (grp === 'segLevel') S.contract.level = +v;
+    else if (grp === 'segStrain') S.contract.strain = v;
+    else if (grp === 'segDecl') S.contract.declarer = v;
+    else if (b.id === 'start') { S.started = true; S.plays = []; S.showTrick = false; S.msg = ''; S.kind = ''; render(); return; }
+    else if (b.id === 'change') {
+      if (S.plays.length && !S.confirmChange) { S.confirmChange = true; render(); setTimeout(function () { S.confirmChange = false; renderSetup(); }, 4000); return; }
+      clearTimer(); S.started = false; S.plays = []; S.showTrick = false; S.confirmChange = false; render(); return;
+    } else return;
+    render();
+  });
+  $('undoCard').addEventListener('click', function () { truncate(S.plays.length - 1); });
+  $('undoTrick').addEventListener('click', function () {
+    var n = S.plays.length; truncate(n % 4 !== 0 ? n - (n % 4) : n - 4);
+  });
+  $('restart').addEventListener('click', function () { truncate(0); });
+  $('logList').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-k]'); if (b) truncate(+b.getAttribute('data-k') * 4);
+  });
+  $('boardSel').addEventListener('change', function (e) { selectBoard(+e.target.value); });
+  $('prevB').addEventListener('click', function () { if (S.bi > 0) selectBoard(S.bi - 1); });
+  $('nextB').addEventListener('click', function () { if (S.bi < S.boards.length - 1) selectBoard(S.bi + 1); });
+  function loadWeek() {
+    /* The teacher replaces boards.pbn each week; fall back to the built-in copy when it is not there (e.g. opened from a file). */
+    var done = function (t) { loadText(t, WEEK_LABEL); };
+    if (!window.fetch || location.protocol === 'file:') { done(DEFAULT_PBN); return; }
+    fetch('boards.pbn', { cache: 'no-store' }).then(function (r) { if (!r.ok) throw 0; return r.text(); })
+      .then(function (t) { if (!/\[Deal\s+"/.test(t)) throw 0; done(t); }, function () { done(DEFAULT_PBN); })
+      .catch(function () { done(DEFAULT_PBN); });
+  }
+  $('sample').addEventListener('click', loadWeek);
+  $('fileLabel').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
+  function readFile(f) {
+    if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () { loadText(String(rd.result), f.name); };
+    rd.onerror = function () { say('That file could not be read. Please try again.', 'warn'); };
+    rd.readAsText(f);
+  }
+  $('file').addEventListener('change', function (e) { readFile(e.target.files[0]); e.target.value = ''; });
+  var dragDepth = 0;
+  window.addEventListener('dragenter', function (e) { e.preventDefault(); dragDepth++; $('drop').hidden = false; });
+  window.addEventListener('dragover', function (e) { e.preventDefault(); });
+  window.addEventListener('dragleave', function () { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('drop').hidden = true; });
+  window.addEventListener('drop', function (e) { e.preventDefault(); dragDepth = 0; $('drop').hidden = true; readFile(e.dataTransfer && e.dataTransfer.files[0]); });
+
+  /* exposed for testing */
+  window.__bridge = { parsePBN: parsePBN, state: S, derive: derive };
+  loadWeek();
+})();
+</script>
+</body></html>
